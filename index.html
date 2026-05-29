@@ -94,6 +94,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',s
 .edit-row-inline{display:none;align-items:center;gap:8px;padding:4px 0}
 .edit-row-inline.show{display:flex;flex-wrap:wrap}
 .edit-row-inline input[type="date"]{padding:4px 6px;border:2px solid #1a73e8;border-radius:4px;font-size:12px;outline:none}
+.custom-add-box{margin-top:10px;padding:14px;background:#fffdf5;border:2px dashed #f9ab00;border-radius:8px}
+.custom-add-form{display:flex;flex-direction:column;gap:8px}
+.custom-add-form .form-row{display:flex;align-items:center;gap:8px}
+.custom-add-form .form-row label{min-width:70px;font-size:13px;font-weight:500;color:#555}
+.custom-add-form .form-row input,.custom-add-form .form-row select{flex:1;padding:8px 10px;border:1px solid #dadce0;border-radius:6px;font-size:14px;outline:none}
+.custom-add-form .form-row input:focus,.custom-add-form .form-row select:focus{border-color:#1a73e8}
+.form-btn{padding:10px 16px;background:#e37400;color:white;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-weight:500;margin-top:4px}
+.form-btn:active{background:#c26400}
 .empty-state{text-align:center;padding:40px;color:#999}
 .empty-state .icon{font-size:42px;margin-bottom:8px}
 .loading{text-align:center;padding:60px;color:#999}
@@ -139,9 +147,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',s
 <script>
 var PRODUCTS = {};
 var TRACKED = [];
+var CUSTOM_PRODUCTS = {};
 var selectedProduct = null;
 var currentGroups = [];
 var allTrackedCache = [];
+
+function loadCustomProducts() {
+  try { CUSTOM_PRODUCTS = JSON.parse(localStorage.getItem('custom_products') || '{}'); }
+  catch(e) { CUSTOM_PRODUCTS = {}; }
+  updateHeaderCount();
+}
+
+function saveCustomProducts() {
+  localStorage.setItem('custom_products', JSON.stringify(CUSTOM_PRODUCTS));
+}
+
+function updateHeaderCount() {
+  var total = Object.keys(PRODUCTS).length + Object.keys(CUSTOM_PRODUCTS).length;
+  var extra = Object.keys(CUSTOM_PRODUCTS).length > 0 ? (' +' + Object.keys(CUSTOM_PRODUCTS).length + '自定义') : '';
+  document.getElementById('headerStatus').textContent = total + ' 个商品' + extra;
+}
 
 function loadProducts() {
   var controller = new AbortController();
@@ -155,7 +180,7 @@ function loadProducts() {
     })
     .then(function(data) {
       PRODUCTS = data;
-      document.getElementById('headerStatus').textContent = Object.keys(PRODUCTS).length + ' 个商品';
+      updateHeaderCount();
     })
     .catch(function(e) {
       clearTimeout(timeoutId);
@@ -183,9 +208,9 @@ function fixTrackedData() {
 }
 
 function getProduct(code) {
-  var p = PRODUCTS[code];
+  var p = PRODUCTS[code] || CUSTOM_PRODUCTS[code];
   if (!p) return null;
-  return { code: code, name: p[0], shelf_life_days: p[1], spec: p[2], storage: p[3] || '常温' };
+  return { code: code, name: p[0], shelf_life_days: p[1], spec: p[2], storage: p[3] || '常温', is_custom: !!CUSTOM_PRODUCTS[code] };
 }
 
 function daysBetween(d1, d2) {
@@ -217,7 +242,8 @@ function groupItems(items) {
   items.forEach(function(item) {
     var s = getTrackedStatus(item);
     if (!groups[s.code]) {
-      groups[s.code] = { code: s.code, name: s.name, short_name: s.short_name, shelf_life_days: s.shelf_life_days, spec: s.spec, batches: [] };
+      var prod = getProduct(s.code);
+      groups[s.code] = { code: s.code, name: s.name, short_name: s.short_name, shelf_life_days: s.shelf_life_days, spec: s.spec, is_custom: !!(prod && prod.is_custom), batches: [] };
     }
     groups[s.code].batches.push(s);
   });
@@ -283,12 +309,22 @@ function searchProduct() {
   btn.disabled = true; btn.textContent = '查询中...';
 
   setTimeout(function() {
-    if (PRODUCTS[code]) {
+    var foundInDb = PRODUCTS[code];
+    var foundInCustom = CUSTOM_PRODUCTS[code];
+
+    if (foundInDb || foundInCustom) {
       selectedProduct = getProduct(code);
       showProductDetail(selectedProduct);
     } else {
       var matches = [];
       for (var k in PRODUCTS) {
+        var p = getProduct(k);
+        if (k.indexOf(code) !== -1 || (p && p.name.indexOf(code) !== -1)) {
+          matches.push(p);
+          if (matches.length >= 8) break;
+        }
+      }
+      for (var k in CUSTOM_PRODUCTS) {
         var p = getProduct(k);
         if (k.indexOf(code) !== -1 || (p && p.name.indexOf(code) !== -1)) {
           matches.push(p);
@@ -301,18 +337,46 @@ function searchProduct() {
           var label = '';
           if (p.shelf_life_days >= 365) label = ' <span style="color:#34a853;font-size:11px">' + Math.floor(p.shelf_life_days/30) + '个月</span>';
           else if (p.shelf_life_days > 0) label = ' <span style="color:#34a853;font-size:11px">' + p.shelf_life_days + '天</span>';
-          h += '<div class="fuzzy-item" onclick="selectProduct(\'' + p.code + '\')"><span class="fname">' + p.name + label + '</span><span class="fcode">编码:' + p.code + '</span></div>';
+          var tag = p.is_custom ? ' <span style="background:#fef7e0;color:#e37400;font-size:10px;padding:1px 5px;border-radius:3px">自定义</span>' : '';
+          h += '<div class="fuzzy-item" onclick="selectProduct(\'' + p.code + '\')"><span class="fname">' + p.name + label + tag + '</span><span class="fcode">编码:' + p.code + '</span></div>';
         });
         h += '</div>';
-        resultEl.innerHTML = h;
-      } else {
-        errEl.textContent = '未找到编码 \'' + code + '\' 对应的商品';
-        errEl.classList.add('show');
       }
+      h += '<div class="custom-add-box" id="customAddBox"><div style="font-weight:500;margin-bottom:8px;color:#e37400">🆕 商品不在数据库中？手动添加新商品</div>' +
+        '<div class="custom-add-form">' +
+        '<div class="form-row"><label>商品名称</label><input type="text" id="customName" placeholder="例：新品牌酸奶200ml"></div>' +
+        '<div class="form-row"><label>保质期(天)</label><input type="number" id="customLife" placeholder="例：180" min="1"></div>' +
+        '<div class="form-row"><label>规格</label><input type="text" id="customSpec" placeholder="例：200ml"></div>' +
+        '<div class="form-row"><label>存储条件</label><select id="customStorage"><option value="常温">常温</option><option value="冷藏">冷藏</option><option value="冷冻">冷冻</option></select></div>' +
+        '<button class="form-btn" onclick="saveCustomProduct(\'' + code.replace(/'/g, "\\'") + '\')">💾 保存并添加追踪</button></div></div>';
+      resultEl.innerHTML = h;
     }
-    if (selectedProduct || resultEl.querySelector('.fuzzy-list')) resultEl.classList.add('show');
+    if (selectedProduct || resultEl.querySelector('.fuzzy-list') || resultEl.querySelector('.custom-add-box')) resultEl.classList.add('show');
     btn.disabled = false; btn.textContent = '查询';
   }, 10);
+}
+
+function saveCustomProduct(code) {
+  var name = document.getElementById('customName').value.trim();
+  var life = parseInt(document.getElementById('customLife').value);
+  var spec = document.getElementById('customSpec').value.trim();
+  var storage = document.getElementById('customStorage').value;
+
+  var errEl = document.getElementById('searchError');
+  errEl.classList.remove('show');
+
+  if (!name) { errEl.textContent = '请输入商品名称'; errEl.classList.add('show'); return; }
+  if (!life || life < 1) { errEl.textContent = '请输入有效的保质期天数'; errEl.classList.add('show'); return; }
+  if (!spec) { errEl.textContent = '请输入规格'; errEl.classList.add('show'); return; }
+
+  CUSTOM_PRODUCTS[code] = [name, life, spec, storage];
+  saveCustomProducts();
+
+  document.getElementById('customAddBox').style.display = 'none';
+  selectedProduct = getProduct(code);
+  showProductDetail(selectedProduct);
+
+  updateHeaderCount();
 }
 
 function selectProduct(code) {
@@ -327,7 +391,9 @@ function showProductDetail(product) {
   if (months > 0 && days > 0) lifeStr += ' (' + months + '个月' + days + '天)';
   else if (months > 0) lifeStr += ' (' + months + '个月)';
 
-  var html = '<div class="product-info"><div class="name">' + product.name + '</div><div class="meta">' +
+  var customTag = product.is_custom ? ' <span style="background:#fef7e0;color:#e37400;font-size:11px;padding:2px 6px;border-radius:3px">自定义商品</span>' : '';
+
+  var html = '<div class="product-info"><div class="name">' + product.name + customTag + '</div><div class="meta">' +
     '<span>📝 编码:' + product.code + '</span>' +
     '<span>⏱ 保质期:' + lifeStr + '</span>' +
     '<span>📏 规格:' + product.spec + '</span>' +
@@ -409,8 +475,10 @@ function renderProductCards(groups) {
     var eb = g.batches[0];
     var daysLabel = eb.expired ? ('已过期' + Math.abs(eb.days_left) + '天') : (eb.days_left + '天');
 
+    var customBadge = g.is_custom ? ' <span style="background:#fef7e0;color:#e37400;font-size:10px;padding:1px 5px;border-radius:3px;vertical-align:middle">自定义</span>' : '';
+
     html += '<div class="product-card"><div class="product-card-header" onclick="toggleCard(\'' + g.code + '\')"><div class="left">' +
-      '<div class="pname">' + g.name + ' ' + badge + '</div>' +
+      '<div class="pname">' + g.name + ' ' + badge + customBadge + '</div>' +
       '<div class="pmeta">编码:' + g.code + ' | 保质期:' + g.shelf_life_days + '天 | 规格:' + g.spec + '</div></div>' +
       '<div class="right"><div class="summary"><div class="val">' + g.batch_count + '</div><div class="lbl">批次</div></div>' +
       '<div class="summary"><div class="val">' + g.total_quantity + '</div><div class="lbl">总库存</div></div>' +
@@ -563,7 +631,8 @@ function filterTracked() {
 }
 
 function exportData() {
-  var blob = new Blob([JSON.stringify(TRACKED, null, 2)], {type: 'application/json'});
+  var data = { tracked: TRACKED, custom_products: CUSTOM_PRODUCTS };
+  var blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = '临期追踪数据_' + new Date().toISOString().slice(0,10) + '.json';
@@ -580,17 +649,38 @@ function importData() {
     var reader = new FileReader();
     reader.onload = function(e) {
       try {
-        var data = JSON.parse(e.target.result);
-        if (!Array.isArray(data)) { alert('文件格式不正确'); return; }
-        if (!confirm('将导入 ' + data.length + ' 条追踪记录，是否覆盖现有数据？\n\n选"确定"覆盖，选"取消"合并')) {
-          data.forEach(function(d) {
+        var raw = JSON.parse(e.target.result);
+        var trackedData, customData;
+
+        if (Array.isArray(raw)) {
+          trackedData = raw;
+          customData = {};
+        } else {
+          trackedData = raw.tracked || [];
+          customData = raw.custom_products || {};
+        }
+
+        if (!Array.isArray(trackedData)) { alert('文件格式不正确'); return; }
+
+        var msg = '将导入 ' + trackedData.length + ' 条追踪记录';
+        if (Object.keys(customData).length > 0) msg += ' 和 ' + Object.keys(customData).length + ' 个自定义商品';
+        msg += '，是否覆盖现有数据？\n\n选"确定"覆盖，选"取消"合并';
+
+        if (!confirm(msg)) {
+          trackedData.forEach(function(d) {
             var exists = TRACKED.some(function(t) { return t.code === d.code && t.production_date === d.production_date; });
             if (!exists && d.code && d.production_date && d.expiration_date) TRACKED.push(d);
           });
+          for (var k in customData) {
+            if (!CUSTOM_PRODUCTS[k]) CUSTOM_PRODUCTS[k] = customData[k];
+          }
         } else {
-          TRACKED = data;
+          TRACKED = trackedData;
+          CUSTOM_PRODUCTS = customData;
         }
         saveTracked();
+        saveCustomProducts();
+        updateHeaderCount();
         refreshView();
       } catch(ex) { alert('文件解析失败'); }
     };
@@ -649,6 +739,7 @@ window.addEventListener('offline', checkOnline);
 checkOnline();
 
 loadProducts().then(function() {
+  loadCustomProducts();
   loadTracked();
   renderApp();
   requestNotification();
