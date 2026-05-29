@@ -144,12 +144,30 @@ var currentGroups = [];
 var allTrackedCache = [];
 
 function loadProducts() {
-  return fetch('products.json')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      PRODUCTS = data;
-      document.getElementById('headerStatus').textContent = Object.keys(PRODUCTS).length + ' 个商品';
-    });
+  return new Promise(function(resolve, reject) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'products.json', true);
+    xhr.timeout = 30000;
+    xhr.ontimeout = function() {
+      reject(new Error('加载超时，请检查网络后刷新页面'));
+    };
+    xhr.onerror = function() {
+      reject(new Error('网络错误，请检查网络连接'));
+    };
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          PRODUCTS = JSON.parse(xhr.responseText);
+          resolve();
+        } catch(e) {
+          reject(new Error('数据解析失败'));
+        }
+      } else {
+        reject(new Error('服务器错误 ' + xhr.status));
+      }
+    };
+    xhr.send();
+  });
 }
 
 function loadTracked() {
@@ -637,13 +655,14 @@ window.addEventListener('offline', checkOnline);
 checkOnline();
 
 loadProducts().then(function() {
+  document.getElementById('headerStatus').textContent = Object.keys(PRODUCTS).length + ' 个商品';
   loadTracked();
   renderApp();
   requestNotification();
   setInterval(checkNotifications, 3600000);
   checkNotifications();
 }).catch(function(e) {
-  document.getElementById('app').innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>加载商品数据库失败</div><div style="font-size:12px;margin-top:4px">请检查网络连接后刷新页面</div></div>';
+  document.getElementById('app').innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div style="font-weight:600;margin-bottom:8px">加载商品数据库失败</div><div style="font-size:13px;color:#888;margin-bottom:6px">' + (e.message || '未知错误') + '</div><button onclick="location.reload()" style="padding:10px 24px;background:#1a73e8;color:white;border:none;border-radius:8px;font-size:15px;cursor:pointer;margin-top:8px">重新加载</button></div>';
 });
 </script>
 </body>
