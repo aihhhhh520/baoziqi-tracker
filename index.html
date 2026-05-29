@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="theme-color" content="#1a73e8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<title>临期商品排查</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;background:#f0f2f5;min-height:100vh;color:#333;-webkit-tap-highlight-color:transparent}
+.header{background:linear-gradient(135deg,#1a73e8,#1557b0);color:white;padding:16px 20px;box-shadow:0 2px 8px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.header h1{font-size:19px;font-weight:600}
+.header .status{font-size:12px;opacity:.85}
+.container{max-width:1000px;margin:16px auto;padding:0 12px}
+.card{background:white;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:20px;margin-bottom:16px}
+.card-title{font-size:16px;font-weight:600;margin-bottom:14px;color:#1a1a1a}
+.search-box{display:flex;gap:10px;margin-bottom:14px}
+.search-box input{flex:1;padding:11px 14px;border:2px solid #e0e0e0;border-radius:8px;font-size:16px;outline:none;transition:border .2s}
+.search-box input:focus{border-color:#1a73e8}
+.search-box button{padding:11px 20px;background:#1a73e8;color:white;border:none;border-radius:8px;font-size:15px;cursor:pointer;font-weight:500;white-space:nowrap}
+.search-box button:active{background:#1557b0}
+.search-box button:disabled{background:#93b8f0}
+.result-area{display:none}
+.result-area.show{display:block}
+.product-info{background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:14px}
+.product-info .name{font-size:17px;font-weight:600;color:#1a73e8;margin-bottom:6px}
+.product-info .meta{display:flex;flex-wrap:wrap;gap:10px;font-size:13px;color:#666}
+.product-info .meta span{background:#e8f0fe;padding:3px 9px;border-radius:4px}
+.date-setter{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.date-setter label{font-weight:500;white-space:nowrap;font-size:14px}
+.date-setter input[type="date"]{padding:9px 12px;border:2px solid #e0e0e0;border-radius:8px;font-size:15px;outline:none}
+.date-setter input[type="date"]:focus{border-color:#1a73e8}
+.date-setter input[type="number"]{width:68px;padding:9px 8px;border:2px solid #e0e0e0;border-radius:8px;font-size:15px;outline:none;text-align:center}
+.date-setter input[type="number"]:focus{border-color:#1a73e8}
+.date-setter button{padding:9px 18px;background:#34a853;color:white;border:none;border-radius:8px;font-size:15px;cursor:pointer;font-weight:500}
+.date-setter button:active{background:#2d9249}
+.date-setter button:disabled{background:#a8d5b5}
+.calc-result{margin-top:10px;padding:10px 14px;background:#e6f4ea;border-radius:8px;font-size:14px;border-left:4px solid #34a853;display:none}
+.calc-result .exp-date{font-weight:700;color:#1a73e8;font-size:17px}
+.error-msg{color:#d93025;font-size:14px;margin-top:8px;display:none}
+.error-msg.show{display:block}
+.fuzzy-list{margin-top:10px}
+.fuzzy-item{padding:10px 14px;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.fuzzy-item:active{background:#e8f0fe;border-color:#1a73e8}
+.fuzzy-item .fname{font-weight:500;font-size:14px}
+.fuzzy-item .fcode{color:#999;font-size:12px}
+.tracked-search{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.tracked-search input{padding:8px 12px;border:1px solid #dadce0;border-radius:6px;font-size:14px;outline:none;flex:1;min-width:0}
+.tracked-search input:focus{border-color:#1a73e8}
+.notify-bar{background:#fef7e0;border:1px solid #f9ab00;border-radius:8px;padding:10px 14px;margin-bottom:10px;display:none;align-items:center;gap:8px;font-size:14px}
+.notify-bar.show{display:flex}
+.refresh-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+.refresh-bar .count{font-size:13px;color:#666}
+.refresh-bar button{padding:5px 12px;border:1px solid #dadce0;background:white;border-radius:6px;cursor:pointer;font-size:13px}
+.refresh-bar button:active{background:#f1f3f4}
+.refresh-bar .export-btn{background:#fef7e0;border-color:#f9ab00;color:#e37400}
+.refresh-bar .export-btn:active{background:#fdecc8}
+.product-card{background:#fafbfc;border:1px solid #e8eaed;border-radius:10px;margin-bottom:10px;overflow:hidden}
+.product-card-header{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer;gap:12px;flex-wrap:wrap;user-select:none}
+.product-card-header .left{flex:1;min-width:180px}
+.product-card-header .pname{font-size:15px;font-weight:600;color:#1a1a1a}
+.product-card-header .pmeta{font-size:11px;color:#888;margin-top:2px}
+.product-card-header .right{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.product-card-header .summary{text-align:center}
+.product-card-header .summary .val{font-weight:700;font-size:15px;color:#1a73e8}
+.product-card-header .summary .lbl{font-size:10px;color:#999}
+.product-card-header .expand-icon{font-size:16px;color:#999;transition:transform .2s}
+.product-card-header .expand-icon.open{transform:rotate(180deg)}
+.product-card-body{display:none;border-top:1px solid #e8eaed}
+.product-card-body.show{display:block}
+.batch-item{display:flex;align-items:center;justify-content:space-between;padding:9px 15px;border-bottom:1px solid #f0f0f0;gap:8px;flex-wrap:wrap}
+.batch-item:last-child{border-bottom:none}
+.batch-item .batch-info{flex:1;min-width:160px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:13px;color:#555}
+.batch-item .batch-info strong{color:#333}
+.batch-item .batch-actions{display:flex;align-items:center;gap:6px}
+.batch-item .qty-wrap{display:flex;align-items:center;gap:3px}
+.batch-item .qty-wrap label{font-size:11px;color:#888;white-space:nowrap}
+.batch-item .qty-wrap input{width:52px;padding:4px;border:1px solid #dadce0;border-radius:4px;font-size:13px;text-align:center;outline:none}
+.batch-item .qty-wrap input:focus{border-color:#1a73e8}
+.batch-inline-add{display:flex;align-items:center;gap:8px;padding:9px 15px;background:#f6fef9;border-top:1px dashed #ceead6;flex-wrap:wrap;font-size:13px}
+.batch-inline-add label{font-weight:500;white-space:nowrap}
+.batch-inline-add input[type="date"]{padding:5px 8px;border:2px solid #34a853;border-radius:5px;font-size:13px;outline:none}
+.batch-inline-add input[type="number"]{width:48px;padding:5px 4px;border:1px solid #dadce0;border-radius:4px;font-size:13px;text-align:center;outline:none}
+.badge-sm{padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;white-space:nowrap}
+.btn-sm{padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;border:1px solid #dadce0;background:white;color:#555;white-space:nowrap}
+.btn-sm:active{background:#f1f3f4}
+.btn-sm.primary{background:#34a853;color:white;border-color:#34a853}
+.btn-sm.primary:active{background:#2d9249}
+.btn-sm.danger{color:#d93025;border-color:#fce8e6}
+.btn-sm.danger:active{background:#fce8e6}
+.edit-row-inline{display:none;align-items:center;gap:8px;padding:4px 0}
+.edit-row-inline.show{display:flex;flex-wrap:wrap}
+.edit-row-inline input[type="date"]{padding:4px 6px;border:2px solid #1a73e8;border-radius:4px;font-size:12px;outline:none}
+.empty-state{text-align:center;padding:40px;color:#999}
+.empty-state .icon{font-size:42px;margin-bottom:8px}
+.loading{text-align:center;padding:60px;color:#999}
+.loading .spinner{display:inline-block;width:36px;height:36px;border:3px solid #e0e0e0;border-top-color:#1a73e8;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:768px){
+.header{padding:12px 14px}
+.header h1{font-size:17px}
+.container{margin:10px auto;padding:0 6px}
+.card{padding:14px;border-radius:10px;margin-bottom:10px}
+.search-box{flex-direction:column;gap:6px}
+.search-box button{width:100%}
+.date-setter{flex-direction:column;align-items:stretch;gap:6px}
+.date-setter input[type="date"]{width:100%}
+.date-setter button{width:100%}
+.product-card-header{flex-direction:column;align-items:flex-start;gap:6px;position:relative}
+.product-card-header .right{width:100%;justify-content:space-between}
+.product-card-header .summary .val{font-size:13px}
+.product-card-header .expand-icon{position:absolute;right:14px;top:14px}
+.batch-item{flex-direction:column;align-items:flex-start;gap:6px}
+.batch-item .batch-actions{width:100%;justify-content:space-between}
+.batch-inline-add{flex-direction:column;align-items:stretch;gap:5px}
+.batch-inline-add input[type="date"]{width:100%}
+.refresh-bar{flex-direction:column;align-items:flex-start}
+.refresh-bar button{width:100%}
+.btn-sm{padding:8px 14px;font-size:14px}
+.qty-wrap input{font-size:16px;width:58px;padding:6px}
+.notify-bar{font-size:13px}
+}
+.offline-bar{background:#fce8e6;color:#c5221f;padding:8px 16px;text-align:center;font-size:13px;display:none}
+.offline-bar.show{display:block}
+</style>
+</head>
+<body>
+<div class="offline-bar" id="offlineBar">已离线 - 数据保存在本地，恢复网络后可导出</div>
+<div class="header">
+  <h1>📦 临期商品排查</h1>
+  <span class="status" id="headerStatus">加载中...</span>
+</div>
+<div class="container" id="app">
+  <div class="loading"><div class="spinner"></div><div>正在加载商品数据库...</div></div>
+</div>
+<script>
+var PRODUCTS = {};
+var TRACKED = [];
+var selectedProduct = null;
+var currentGroups = [];
+var allTrackedCache = [];
+
+function loadProducts() {
+  return fetch('products.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      PRODUCTS = data;
+      document.getElementById('headerStatus').textContent = Object.keys(PRODUCTS).length + ' 个商品';
+    });
+}
+
+function loadTracked() {
+  try { TRACKED = JSON.parse(localStorage.getItem('shelf_tracked') || '[]'); }
+  catch(e) { TRACKED = []; }
+  fixTrackedData();
+}
+
+function saveTracked() {
+  localStorage.setItem('shelf_tracked', JSON.stringify(TRACKED));
+}
+
+function fixTrackedData() {
+  var changed = false;
+  TRACKED.forEach(function(item) {
+    if (!item.quantity) { item.quantity = 1; changed = true; }
+  });
+  if (changed) saveTracked();
+}
+
+function getProduct(code) {
+  var p = PRODUCTS[code];
+  if (!p) return null;
+  return { code: code, name: p[0], shelf_life_days: p[1], spec: p[2], storage: p[3] || '常温' };
+}
+
+function daysBetween(d1, d2) {
+  return Math.ceil((d2.getTime() - d1.getTime()) / 86400000);
+}
+
+function getTrackedStatus(item) {
+  var prod = getProduct(item.code);
+  var today = new Date(); today.setHours(0,0,0,0);
+  var exp = new Date(item.expiration_date + 'T00:00:00');
+  var days = daysBetween(today, exp);
+  return {
+    code: item.code,
+    production_date: item.production_date,
+    expiration_date: item.expiration_date,
+    quantity: item.quantity || 1,
+    name: prod ? prod.name : '未知商品',
+    short_name: '',
+    shelf_life_days: prod ? prod.shelf_life_days : 0,
+    spec: prod ? prod.spec : '',
+    days_left: days,
+    expiring: days >= 0 && days <= 15,
+    expired: days < 0
+  };
+}
+
+function groupItems(items) {
+  var groups = {};
+  items.forEach(function(item) {
+    var s = getTrackedStatus(item);
+    if (!groups[s.code]) {
+      groups[s.code] = { code: s.code, name: s.name, short_name: s.short_name, shelf_life_days: s.shelf_life_days, spec: s.spec, batches: [] };
+    }
+    groups[s.code].batches.push(s);
+  });
+  var result = [];
+  for (var code in groups) {
+    var g = groups[code];
+    g.batches.sort(function(a,b) { return a.days_left - b.days_left; });
+    g.batch_count = g.batches.length;
+    g.total_quantity = 0;
+    g.earliest_days_left = g.batches[0].days_left;
+    g.has_expiring = false;
+    g.has_expired = false;
+    g.batches.forEach(function(b) {
+      g.total_quantity += b.quantity;
+      if (b.expiring) g.has_expiring = true;
+      if (b.expired) g.has_expired = true;
+    });
+    result.push(g);
+  }
+  result.sort(function(a,b) { return a.earliest_days_left - b.earliest_days_left; });
+  return result;
+}
+
+function renderApp() {
+  var html = '<div class="card">' +
+    '<div class="card-title">🔍 商品查询</div>' +
+    '<div class="search-box">' +
+    '<input type="text" id="codeInput" placeholder="输入商品短编码..." autofocus>' +
+    '<button id="searchBtn" onclick="searchProduct()">查询</button></div>' +
+    '<div class="error-msg" id="searchError"></div>' +
+    '<div class="result-area" id="searchResult"></div></div>' +
+    '<div class="card">' +
+    '<div class="refresh-bar">' +
+    '<span class="count" id="trackedCount"></span>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+    '<button onclick="exportData()" class="export-btn">📤 导出数据</button>' +
+    '<button onclick="importData()" style="border-color:#1a73e8;color:#1a73e8">📥 导入数据</button>' +
+    '<button onclick="refreshView()">🔄 刷新</button></div></div>' +
+    '<div class="tracked-search">' +
+    '<input type="text" id="trackedSearch" placeholder="搜索已追踪商品..." oninput="filterTracked()">' +
+    '<span id="filteredCount" style="font-size:12px;color:#999;white-space:nowrap"></span></div>' +
+    '<div class="notify-bar" id="notifyBar"><span>⚠️</span><span id="notifyText"></span></div>' +
+    '<div class="tracked-list" id="trackedList"></div></div>';
+  document.getElementById('app').innerHTML = html;
+
+  document.getElementById('codeInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') searchProduct();
+  });
+
+  document.getElementById('trackedCount').textContent = '共追踪 ' + TRACKED.length + ' 条记录';
+  refreshView();
+}
+
+function searchProduct() {
+  var code = document.getElementById('codeInput').value.trim();
+  var errEl = document.getElementById('searchError');
+  var resultEl = document.getElementById('searchResult');
+  var btn = document.getElementById('searchBtn');
+  errEl.classList.remove('show');
+  resultEl.classList.remove('show');
+  selectedProduct = null;
+  if (!code) { errEl.textContent = '请输入商品编码'; errEl.classList.add('show'); return; }
+  btn.disabled = true; btn.textContent = '查询中...';
+
+  setTimeout(function() {
+    if (PRODUCTS[code]) {
+      selectedProduct = getProduct(code);
+      showProductDetail(selectedProduct);
+    } else {
+      var matches = [];
+      for (var k in PRODUCTS) {
+        var p = getProduct(k);
+        if (k.indexOf(code) !== -1 || (p && p.name.indexOf(code) !== -1)) {
+          matches.push(p);
+          if (matches.length >= 10) break;
+        }
+      }
+      if (matches.length > 0) {
+        var h = '<div style="font-weight:500;margin-bottom:6px;color:#666;font-size:14px">找到以下匹配商品，请点击：</div><div class="fuzzy-list">';
+        matches.forEach(function(p) {
+          var label = '';
+          if (p.shelf_life_days >= 365) label = ' <span style="color:#34a853;font-size:11px">' + Math.floor(p.shelf_life_days/30) + '个月</span>';
+          else if (p.shelf_life_days > 0) label = ' <span style="color:#34a853;font-size:11px">' + p.shelf_life_days + '天</span>';
+          h += '<div class="fuzzy-item" onclick="selectProduct(\'' + p.code + '\')"><span class="fname">' + p.name + label + '</span><span class="fcode">编码:' + p.code + '</span></div>';
+        });
+        h += '</div>';
+        resultEl.innerHTML = h;
+      } else {
+        errEl.textContent = '未找到编码 \'' + code + '\' 对应的商品';
+        errEl.classList.add('show');
+      }
+    }
+    if (selectedProduct || resultEl.querySelector('.fuzzy-list')) resultEl.classList.add('show');
+    btn.disabled = false; btn.textContent = '查询';
+  }, 10);
+}
+
+function selectProduct(code) {
+  document.getElementById('codeInput').value = code;
+  searchProduct();
+}
+
+function showProductDetail(product) {
+  var months = Math.floor(product.shelf_life_days / 30);
+  var days = product.shelf_life_days % 30;
+  var lifeStr = product.shelf_life_days + '天';
+  if (months > 0 && days > 0) lifeStr += ' (' + months + '个月' + days + '天)';
+  else if (months > 0) lifeStr += ' (' + months + '个月)';
+
+  var html = '<div class="product-info"><div class="name">' + product.name + '</div><div class="meta">' +
+    '<span>📝 编码:' + product.code + '</span>' +
+    '<span>⏱ 保质期:' + lifeStr + '</span>' +
+    '<span>📏 规格:' + product.spec + '</span>' +
+    '<span>🏪 存储:' + product.storage + '</span></div></div>' +
+    '<div class="date-setter">' +
+    '<label>📅 生产日期:</label>' +
+    '<input type="date" id="prodDate">' +
+    '<label>📦 数量:</label>' +
+    '<input type="number" id="prodQty" value="1" min="1">' +
+    '<label>件</label>' +
+    '<button id="addBtn" onclick="addTracked()">添加到追踪列表</button></div>' +
+    '<div class="calc-result" id="calcResult"></div>';
+
+  document.getElementById('searchResult').innerHTML = html;
+
+  document.getElementById('prodDate').addEventListener('change', function() { updateCalc(product); });
+  document.getElementById('prodQty').addEventListener('change', function() { updateCalc(product); });
+}
+
+function updateCalc(product) {
+  var dateVal = document.getElementById('prodDate').value;
+  var calcEl = document.getElementById('calcResult');
+  if (!dateVal) { calcEl.style.display = 'none'; return; }
+  var parts = dateVal.split('-');
+  var prodDate = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  prodDate.setDate(prodDate.getDate() + product.shelf_life_days);
+  var expStr = prodDate.getFullYear() + '-' + String(prodDate.getMonth()+1).padStart(2,'0') + '-' + String(prodDate.getDate()).padStart(2,'0');
+  var today = new Date(); today.setHours(0,0,0,0);
+  var daysLeft = daysBetween(today, prodDate);
+  calcEl.innerHTML = '到期日期：<span class="exp-date">' + expStr + '</span> （距今 <strong>' + daysLeft + '</strong> 天）';
+  calcEl.style.display = 'block';
+}
+
+function addTracked() {
+  if (!selectedProduct) return;
+  var dateVal = document.getElementById('prodDate').value;
+  var qty = parseInt(document.getElementById('prodQty').value) || 1;
+  var errEl = document.getElementById('searchError');
+  errEl.classList.remove('show');
+  if (!dateVal) { errEl.textContent = '请选择生产日期'; errEl.classList.add('show'); return; }
+
+  var parts = dateVal.split('-');
+  var prodDate = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  prodDate.setDate(prodDate.getDate() + selectedProduct.shelf_life_days);
+  var expStr = prodDate.getFullYear() + '-' + String(prodDate.getMonth()+1).padStart(2,'0') + '-' + String(prodDate.getDate()).padStart(2,'0');
+
+  for (var i = 0; i < TRACKED.length; i++) {
+    if (TRACKED[i].code === selectedProduct.code && TRACKED[i].production_date === dateVal) {
+      errEl.textContent = '该商品此生产日期已存在'; errEl.classList.add('show'); return;
+    }
+  }
+
+  TRACKED.push({ code: selectedProduct.code, production_date: dateVal, expiration_date: expStr, quantity: qty });
+  saveTracked();
+  document.getElementById('calcResult').innerHTML = '✅ 已添加！到期日期：<span class="exp-date">' + expStr + '</span>（' + qty + '件）';
+  document.getElementById('prodDate').value = '';
+  document.getElementById('prodQty').value = '1';
+  selectedProduct = null;
+  document.getElementById('codeInput').value = '';
+  setTimeout(function() { document.getElementById('searchResult').classList.remove('show'); }, 2000);
+  refreshView();
+}
+
+function escapeId(code, prodDate) {
+  return code.replace(/\./g,'_') + '-' + prodDate.replace(/-/g,'_');
+}
+
+function renderProductCards(groups) {
+  var listEl = document.getElementById('trackedList');
+  if (groups.length === 0) {
+    listEl.innerHTML = '<div class="empty-state"><div class="icon">📋</div><div>暂无追踪商品</div><div style="font-size:12px;margin-top:4px">请先查询商品并添加</div></div>';
+    return;
+  }
+  var html = '';
+  groups.forEach(function(g) {
+    var badge = '';
+    if (g.has_expired) badge = '<span class="badge-sm" style="background:#fce8e6;color:#c5221f;">有批次已过期</span>';
+    else if (g.has_expiring) badge = '<span class="badge-sm" style="background:#fef7e0;color:#e37400;">即将到期</span>';
+    var eb = g.batches[0];
+    var daysLabel = eb.expired ? ('已过期' + Math.abs(eb.days_left) + '天') : (eb.days_left + '天');
+
+    html += '<div class="product-card"><div class="product-card-header" onclick="toggleCard(\'' + g.code + '\')"><div class="left">' +
+      '<div class="pname">' + g.name + ' ' + badge + '</div>' +
+      '<div class="pmeta">编码:' + g.code + ' | 保质期:' + g.shelf_life_days + '天 | 规格:' + g.spec + '</div></div>' +
+      '<div class="right"><div class="summary"><div class="val">' + g.batch_count + '</div><div class="lbl">批次</div></div>' +
+      '<div class="summary"><div class="val">' + g.total_quantity + '</div><div class="lbl">总库存</div></div>' +
+      '<div class="summary"><div class="val">' + daysLabel + '</div><div class="lbl">最早到期</div></div>' +
+      '<span class="expand-icon" id="icon-' + g.code.replace(/\./g,'_') + '">▼</span></div></div>' +
+      '<div class="product-card-body" id="body-' + g.code.replace(/\./g,'_') + '">';
+
+    g.batches.forEach(function(b, bi) {
+      var bb = '';
+      if (b.expired) bb = '<span class="badge-sm" style="background:#fce8e6;color:#c5221f;">已过期</span>';
+      else if (b.expiring) bb = '<span class="badge-sm" style="background:#fef7e0;color:#e37400;">即将到期</span>';
+
+      html += '<div class="batch-item"><div class="batch-info"><span>批次' + (bi+1) + ' | 生产:<strong>' + b.production_date + '</strong> | 到期:<strong>' + b.expiration_date + '</strong> | 剩余:<strong>' + b.days_left + '天</strong></span> ' + bb + '</div>' +
+        '<div class="batch-actions"><div class="qty-wrap"><label>数量:</label><input type="number" value="' + b.quantity + '" min="1" onchange="updateQty(\'' + g.code + '\',\'' + b.production_date + '\',this.value)"><label>件</label></div>' +
+        '<button class="btn-sm" onclick="event.stopPropagation();startEditInline(\'' + g.code + '\',\'' + b.production_date + '\')">✎ 改日期</button>' +
+        '<button class="btn-sm danger" onclick="event.stopPropagation();deleteBatch(\'' + g.code + '\',\'' + b.production_date + '\')">✕</button></div></div>' +
+        '<div class="batch-item edit-row-inline" id="editrow-' + escapeId(g.code, b.production_date) + '">' +
+        '<label style="font-size:13px;font-weight:500">新生产日期:</label>' +
+        '<input type="date" id="editdate-' + escapeId(g.code, b.production_date) + '">' +
+        '<button class="btn-sm primary" onclick="event.stopPropagation();saveEditInline(\'' + g.code + '\',\'' + b.production_date + '\')">保存</button>' +
+        '<button class="btn-sm" onclick="event.stopPropagation();cancelEditInline(\'' + g.code + '\',\'' + b.production_date + '\')">取消</button></div>';
+    });
+
+    html += '<div class="batch-inline-add"><label>📅 新批次:</label>' +
+      '<input type="date" id="newdate-' + g.code.replace(/\./g,'_') + '">' +
+      '<label>📦 数量:</label>' +
+      '<input type="number" id="newqty-' + g.code.replace(/\./g,'_') + '" value="1" min="1">' +
+      '<label>件</label>' +
+      '<button class="btn-sm primary" onclick="event.stopPropagation();addBatchInline(\'' + g.code + '\')">确认添加</button></div>';
+
+    html += '</div></div>';
+  });
+  listEl.innerHTML = html;
+}
+
+function refreshView() {
+  loadTracked();
+  allTrackedCache = TRACKED.slice();
+  currentGroups = groupItems(TRACKED);
+  renderProductCards(currentGroups);
+  updateNotifyBar();
+  document.getElementById('trackedCount').textContent = '共追踪 ' + TRACKED.length + ' 条记录';
+}
+
+function updateNotifyBar() {
+  var count = 0;
+  currentGroups.forEach(function(g) {
+    g.batches.forEach(function(b) { if (b.expiring || b.expired) count++; });
+  });
+  var bar = document.getElementById('notifyBar');
+  if (count > 0) { bar.classList.add('show'); document.getElementById('notifyText').textContent = '有 ' + count + ' 个批次即将到期或已过期！'; }
+  else bar.classList.remove('show');
+}
+
+function toggleCard(code) {
+  var body = document.getElementById('body-' + code.replace(/\./g,'_'));
+  var icon = document.getElementById('icon-' + code.replace(/\./g,'_'));
+  if (body.classList.contains('show')) { body.classList.remove('show'); icon.classList.remove('open'); }
+  else { body.classList.add('show'); icon.classList.add('open'); }
+}
+
+function updateQty(code, prodDate, qty) {
+  qty = parseInt(qty) || 1; if (qty < 1) qty = 1;
+  for (var i = 0; i < TRACKED.length; i++) {
+    if (TRACKED[i].code === code && TRACKED[i].production_date === prodDate) {
+      TRACKED[i].quantity = qty; break;
+    }
+  }
+  saveTracked();
+  refreshView();
+}
+
+function startEditInline(code, prodDate) {
+  var row = document.getElementById('editrow-' + escapeId(code, prodDate));
+  if (row) row.classList.add('show');
+}
+
+function cancelEditInline(code, prodDate) {
+  var row = document.getElementById('editrow-' + escapeId(code, prodDate));
+  if (row) row.classList.remove('show');
+}
+
+function saveEditInline(code, oldProdDate) {
+  var dateInput = document.getElementById('editdate-' + escapeId(code, oldProdDate));
+  var newProdDate = dateInput ? dateInput.value : '';
+  if (!newProdDate) { alert('请选择新的生产日期'); return; }
+
+  var product = getProduct(code);
+  if (!product) return;
+
+  var parts = newProdDate.split('-');
+  var pd = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  pd.setDate(pd.getDate() + product.shelf_life_days);
+  var expStr = pd.getFullYear() + '-' + String(pd.getMonth()+1).padStart(2,'0') + '-' + String(pd.getDate()).padStart(2,'0');
+
+  for (var i = 0; i < TRACKED.length; i++) {
+    if (TRACKED[i].code === code && TRACKED[i].production_date === oldProdDate) {
+      TRACKED[i].production_date = newProdDate;
+      TRACKED[i].expiration_date = expStr;
+      break;
+    }
+  }
+  saveTracked();
+  refreshView();
+}
+
+function addBatchInline(code) {
+  var sc = code.replace(/\./g,'_');
+  var dateVal = document.getElementById('newdate-' + sc).value;
+  var qty = parseInt(document.getElementById('newqty-' + sc).value) || 1;
+  if (!dateVal) { alert('请选择生产日期'); return; }
+
+  var product = getProduct(code);
+  if (!product) return;
+
+  var parts = dateVal.split('-');
+  var pd = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  pd.setDate(pd.getDate() + product.shelf_life_days);
+  var expStr = pd.getFullYear() + '-' + String(pd.getMonth()+1).padStart(2,'0') + '-' + String(pd.getDate()).padStart(2,'0');
+
+  for (var i = 0; i < TRACKED.length; i++) {
+    if (TRACKED[i].code === code && TRACKED[i].production_date === dateVal) {
+      alert('该商品此生产日期已存在'); return;
+    }
+  }
+
+  TRACKED.push({ code: code, production_date: dateVal, expiration_date: expStr, quantity: qty });
+  saveTracked();
+  refreshView();
+}
+
+function deleteBatch(code, prodDate) {
+  if (!confirm('确定要删除此批次吗？')) return;
+  TRACKED = TRACKED.filter(function(i) { return !(i.code === code && i.production_date === prodDate); });
+  saveTracked();
+  refreshView();
+}
+
+function filterTracked() {
+  var kw = document.getElementById('trackedSearch').value.trim().toLowerCase();
+  var fc = document.getElementById('filteredCount');
+  if (!kw) { fc.textContent = ''; currentGroups = groupItems(TRACKED); renderProductCards(currentGroups); updateNotifyBar(); return; }
+  var filtered = TRACKED.filter(function(i) {
+    var p = getProduct(i.code);
+    return (p && p.name.toLowerCase().indexOf(kw) !== -1) || i.code.indexOf(kw) !== -1;
+  });
+  fc.textContent = '找到 ' + filtered.length + ' 条';
+  currentGroups = groupItems(filtered);
+  renderProductCards(currentGroups);
+}
+
+function exportData() {
+  var blob = new Blob([JSON.stringify(TRACKED, null, 2)], {type: 'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '临期追踪数据_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+}
+
+function importData() {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = function() {
+    var file = input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var data = JSON.parse(e.target.result);
+        if (!Array.isArray(data)) { alert('文件格式不正确'); return; }
+        if (!confirm('将导入 ' + data.length + ' 条追踪记录，是否覆盖现有数据？\n\n选"确定"覆盖，选"取消"合并')) {
+          data.forEach(function(d) {
+            var exists = TRACKED.some(function(t) { return t.code === d.code && t.production_date === d.production_date; });
+            if (!exists && d.code && d.production_date && d.expiration_date) TRACKED.push(d);
+          });
+        } else {
+          TRACKED = data;
+        }
+        saveTracked();
+        refreshView();
+      } catch(ex) { alert('文件解析失败'); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function checkNotifications() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  var today = new Date(); today.setHours(0,0,0,0);
+  var notified = JSON.parse(localStorage.getItem('shelf_notified') || '{}');
+
+  TRACKED.forEach(function(item) {
+    var exp = new Date(item.expiration_date + 'T00:00:00');
+    var days = daysBetween(today, exp);
+    if (days >= 0 && days <= 15) {
+      var key = item.code + '_' + item.production_date;
+      if (!notified[key]) {
+        notified[key] = true;
+        var p = getProduct(item.code);
+        var name = p ? p.name : '未知商品';
+        var msg = days === 0 ? '今天到期！' : (days === 1 ? '明天到期！' : '还有' + days + '天到期');
+        new Notification('临期提醒', { body: name + '（编码:' + item.code + '）' + msg, icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%231a73e8"/><text x="50" y="65" text-anchor="middle" font-size="50">📦</text></svg>' });
+      }
+    }
+  });
+
+  var currentKeys = {};
+  TRACKED.forEach(function(item) { currentKeys[item.code + '_' + item.production_date] = true; });
+  for (var k in notified) { if (!currentKeys[k]) delete notified[k]; }
+  localStorage.setItem('shelf_notified', JSON.stringify(notified));
+}
+
+function requestNotification() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function checkOnline() {
+  var bar = document.getElementById('offlineBar');
+  if (navigator.onLine) bar.classList.remove('show');
+  else bar.classList.add('show');
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
+
+window.addEventListener('online', checkOnline);
+window.addEventListener('offline', checkOnline);
+checkOnline();
+
+loadProducts().then(function() {
+  loadTracked();
+  renderApp();
+  requestNotification();
+  setInterval(checkNotifications, 3600000);
+  checkNotifications();
+}).catch(function(e) {
+  document.getElementById('app').innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>加载商品数据库失败</div><div style="font-size:12px;margin-top:4px">请检查网络连接后刷新页面</div></div>';
+});
+</script>
+</body>
+</html>
